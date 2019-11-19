@@ -3,6 +3,8 @@
 //
 
 #include <ros/ros.h>
+#include <geometry_msgs/Pose.h>
+#include <tf2/convert.h>
 
 #include "mpc_av/mpc_solver.h"
 
@@ -33,6 +35,7 @@ mpc::MPCSolver::MPCSolver()
     params.u_max[1] = 1;
     ROS_DEBUG("Model Loaded");
 }
+
 
 double mpc::MPCSolver::solve_mpc(const std::array<double, 2>& required_goalpoint)
 {

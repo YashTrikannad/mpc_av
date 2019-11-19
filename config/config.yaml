@@ -2,10 +2,12 @@
 
 # ROS Topic Names
 pose_topic: "gt_pose"
+scan_topic: "scan"
 drive_topic: "nav"
 
 # Visualization
 visualization_enabled: false
+obstacle_avoidance: false
 
 # Input CSV File Path
 csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
@@ -14,7 +16,11 @@ csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
 # Speed Variations
 high_speed: 5.0
 medium_speed: 4.0
-low_speed: 2.0
+low_speed: 3.0
 
 # Tracking Parameter
-lookahead_distance : 1.5
+lookahead_distance: 1.5
+
+# Local Map Parameter
+local_map_length: 1.5
+inflation_radius: 0 #cells

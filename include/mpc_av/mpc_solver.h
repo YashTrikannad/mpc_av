@@ -5,6 +5,8 @@
 #ifndef SRC_MPC_SOLVER_H
 #define SRC_MPC_SOLVER_H
 
+#include <geometry_msgs/TransformStamped.h>
+
 #include "cvxgen/solver.h"
 
 namespace mpc
@@ -21,6 +23,7 @@ public:
     double solve_mpc(const std::array<double, 2>& required_goalwaypoint);
 
 private:
+
     /// Loads the model parameters into the mpc solver
     void update_model(const std::array<double, 2>& required_goalpoint);
 };

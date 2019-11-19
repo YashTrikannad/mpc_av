@@ -10,7 +10,7 @@ Workspace work;
 Settings settings;
 
 int main(int argc, char** argv) {
-    ros::init(argc, argv, "RTDAV_planner");
+    ros::init(argc, argv, "mpc_av");
     ros::NodeHandle nh;
     FollowWaypoints follower;
     ros::spin();
