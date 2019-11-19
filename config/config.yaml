@@ -1,0 +1,20 @@
+# Parameter Configuration File for MPC Trajectory Generator
+
+# ROS Topic Names
+pose_topic: "gt_pose"
+drive_topic: "nav"
+
+# Visualization
+visualization_enabled: false
+
+# Input CSV File Path
+csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
+
+# Car Parameters:
+# Speed Variations
+high_speed: 5.0
+medium_speed: 4.0
+low_speed: 2.0
+
+# Tracking Parameter
+lookahead_distance : 1.5

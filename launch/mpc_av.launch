@@ -1,0 +1,7 @@
+<launch>
+
+    <rosparam command="load" file="$(find mpc_av)/config/config.yaml" />
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find mpc_av)/config/rosconsole_config.conf"/>
+    <node pkg="mpc_av" name="mpc_av_node" type="mpc_av_node" output="screen"/>
+
+</launch>
