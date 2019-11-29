@@ -2,13 +2,18 @@
 // Created by yash on 11/15/19.
 //
 
+// TODO: Remove the relative dependency
+#include <thread>
+
+#include <fmt_star/plan_srv.h>
+
 #include "mpc_av/follow_waypoints.h"
 #include "mpc_av/mpc_solver.h"
 
 /// Constructs the FollowWaypoints class
 FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listener_(tf_buffer_), visualized_(false)
 {
-    std::string localized_pose_topic, drive_topic, csv_path, scan_topic;
+    std::string localized_pose_topic, drive_topic, csv_path, scan_topic, waypoint_input;
     node_handle_.getParam("pose_topic", localized_pose_topic);
     node_handle_.getParam("drive_topic", drive_topic);
     node_handle_.getParam("csv_path", csv_path);
@@ -21,6 +26,7 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     node_handle_.getParam("/local_map_length", local_map_length_);
     node_handle_.getParam("/inflation_radius", inflation_radius_);
     node_handle_.getParam("/obstacle_avoidance", obstacle_avoidance_);
+    node_handle_.getParam("/waypoint_input", waypoint_input);
 
     // Load Input Map from map_server
     dynamic_map_  = *(ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("map",ros::Duration(2)));
@@ -38,6 +44,8 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     map_resolution_ = dynamic_map_.info.resolution;
 
     solver_ = mpc::MPCSolver();
+    settings.verbose = 0;
+    settings.eps = 1e-2;
 
     dynamic_map_pub_ = node_handle_.advertise<nav_msgs::OccupancyGrid>("dynamic_map", 1);
     scan_sub_ = node_handle_.subscribe(scan_topic, 1, &FollowWaypoints::scan_callback, this);
@@ -47,23 +55,50 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     drive_pub_ = node_handle_.advertise<ackermann_msgs::AckermannDriveStamped>(drive_topic, 1);
     global_way_point_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("global_waypoint_markers", 100);
     local_way_point_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("local_waypoint_markers", 1);
+    trajectory_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("trajectory_marker", 10);
 
-    // TODO: CHANGE INTERFACE OF GETTING WAYPOINTS
-    CSVReader reader(csv_path);
-    way_point_data_ = reader.getData();
+    if(waypoint_input == "user")
+    {
+        global_path_client_ = node_handle_.serviceClient<fmt_star::plan_srv>("FMTstar_search");
+        set_goal_sequence();
+        get_global_plan_to_next_goal();
+        std::thread strategy_thread(&FollowWaypoints::planning_strategy_thread, this);
+        strategy_thread.detach();
+    }
+    else if(waypoint_input == "raceline")
+    {
+        CSVReader reader(csv_path);
+        way_point_data_ = reader.getData();
+    }
+
     ROS_INFO("WayPoints Recieved");
 
     ros::Duration(1.0).sleep();
     ROS_INFO("mpc_av_node Initialized");
 }
 
-///// The scan callback updates the occupancy grid
-///// @param scan_msg - pointer to the incoming scan message
+/// This is a separate thread that is responsible for getting plans and doing replanning
+/// whenever the situation is appropriate
+void FollowWaypoints::planning_strategy_thread()
+{
+    while (ros::ok())
+    {
+        if (sqrt(pow(current_pose_[0] - current_goal_[0], 2) + pow(current_pose_[1] - current_goal_[1], 2)) < 2.5)
+        {
+            ROS_INFO("Updating Goal!");
+            get_global_plan_to_next_goal();
+        }
+    }
+}
+
+
+/// The scan callback updates the occupancy grid
+/// @param scan_msg - pointer to the incoming scan message
 void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
 {
     try
     {
-        tf_laser_to_map_ = tf_buffer_.lookupTransform("map", "laser", ros::Time(0));
+        tf_laser_to_map_ = tf_buffer_.lookupTransform("map", "base_link", ros::Time(0));
     }
     catch (tf2::TransformException& ex)
     {
@@ -73,8 +108,8 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
     const auto translation = tf_laser_to_map_.transform.translation;
     const double yaw = tf::getYaw(tf_laser_to_map_.transform.rotation);
 
-    const auto start = static_cast<int>(scan_msg->ranges.size()/4);
-    const auto end = static_cast<int>(3*scan_msg->ranges.size()/4);
+    const auto start = static_cast<int>(scan_msg->ranges.size()/6);
+    const auto end = static_cast<int>(5*scan_msg->ranges.size()/6);
     const double angle_increment = scan_msg->angle_increment;
     double theta = scan_msg->angle_min + angle_increment*(start-1);
 
@@ -108,7 +143,7 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
     }
 
     clear_obstacles_count_++;
-    if(clear_obstacles_count_ > 10)
+    if(clear_obstacles_count_ > 100)
     {
         for(const auto index: new_obstacles_)
         {
@@ -127,6 +162,7 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
 /// @param pose_msg - Localized Pose of the Robot
 void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
 {
+    current_pose_ = {pose_msg->pose.position.x, pose_msg->pose.position.y};
     if(visualization_enabled_ && !visualized_)
     {
         visualize_waypoint_data(way_point_data_, &global_way_point_viz_pub_, "map");
@@ -154,11 +190,6 @@ void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &
             "base_link", "local_waypoint", 1, 0.0, 0.0, 1.0, 0.3, 0.2, 0.2, 0.2);
 
     const auto input = solve_mpc(goal_way_point.position.y, goal_way_point.position.x);
-    settings.verbose = 0;
-    settings.eps = 1e-2;
-
-    // Calculate curvature/steering angle
-    const double steering_angle = 2*(goal_way_point.position.y)/(lookahead_distance_*lookahead_distance_);
 
     publish_corrected_speed_and_steering(input);
 }
@@ -288,20 +319,64 @@ std::vector<int> FollowWaypoints::get_expanded_row_major_indices(const double x_
 double FollowWaypoints::solve_mpc(const double goal_y, const double goal_x)
 {
     double input_original = solver_.solve_mpc({goal_y, goal_x});
-    if(!obstacle_avoidance_ || !is_collided()) return input_original;
+    int unique_id = 1;
+    auto visualize_traj = [&](){
+        if(visualization_enabled_)
+        {
+            visualization_msgs::Marker line_strip;
+            line_strip.header.frame_id = "/base_link";
+            line_strip.ns = "trajectories";
+            line_strip.action = visualization_msgs::Marker::ADD;
+            line_strip.pose.orientation.w = 1.0;
+            line_strip.id = unique_id++;
+            line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+            line_strip.scale.x = 0.1;
+            line_strip.color.b = 1.0;
+            line_strip.color.a = 1.0;
+            line_strip.id = 1;
+            line_strip.lifetime = ros::Duration(0.1);
+            line_strip.header.stamp =ros::Time::now();
+            for(int i=1; i< 12; i++)
+            {
+                geometry_msgs::Point p;
+                p.x = vars.x[i][1];
+                p.y = vars.x[i][0];
+                p.z = 0;
+                line_strip.points.push_back(p);
+            }
+            trajectory_viz_pub_.publish(line_strip);
+        }
+    };
 
-    double increment = 0.1;
+    if(!obstacle_avoidance_ || !is_collided())
+    {
+        visualize_traj();
+        return input_original;
+    }
+
+    double increment_x = 0.02;
+    double increment_y = 0.03;
     double positive_goal_y = goal_y;
     double negative_goal_y = goal_y;
+    double negative_goal_x = goal_x;
     double input = 0;
-    for(int i=0; i< 5; i++)
+    for(int i=0; i< 20; i++)
     {
-        positive_goal_y += increment;
-        input = solver_.solve_mpc({positive_goal_y, goal_x});
-        if(!is_collided()) return input;
-        negative_goal_y -= increment;
-        input = solver_.solve_mpc({negative_goal_y, goal_x});
-        if(!is_collided()) return input;
+        positive_goal_y += increment_y;
+        negative_goal_y -= increment_y;
+        negative_goal_x -= increment_x;
+        input = solver_.solve_mpc({positive_goal_y, negative_goal_x});
+        if(!is_collided())
+        {
+            visualize_traj();
+            return input;
+        }
+        input = solver_.solve_mpc({negative_goal_y, negative_goal_x});
+        if(!is_collided())
+        {
+            visualize_traj();
+            return input;
+        }
     }
     ROS_ERROR("MPC was not able to find a Path");
     return input_original;
@@ -310,24 +385,99 @@ double FollowWaypoints::solve_mpc(const double goal_y, const double goal_x)
 /// Checks if the path returned by mpc is in collision
 bool FollowWaypoints::is_collided() const
 {
-    for(int i=1; i<3; i++)
+    for(int i=1; i<10; i++)
     {
-        geometry_msgs::Pose traj_point;
-        traj_point.position.x = vars.x[i][1];
-        traj_point.position.y = vars.x[i][0];
-        traj_point.position.z = 0;
-        traj_point.orientation.x = 0;
-        traj_point.orientation.y = 0;
-        traj_point.orientation.z = 0;
-        traj_point.orientation.w = 1;
-        tf2::doTransform(traj_point, traj_point, tf_laser_to_map_);
-        std::vector<int> map_indices = get_expanded_row_major_indices(traj_point.position.x, traj_point.position.y);
-        for(const auto& index: map_indices)
+        for(int j=0; j<1; j++)
         {
-            if(dynamic_map_.data[index]==100)
+            geometry_msgs::Pose traj_point;
+            traj_point.position.x = vars.x[i][1] + 0.1*j*(vars.x[i + 1][1]-vars.x[i][1]);
+            traj_point.position.y = vars.x[i][0] + 0.1*j*(vars.x[i + 1][0]-vars.x[i][0]);
+            traj_point.position.z = 0;
+            traj_point.orientation.x = 0;
+            traj_point.orientation.y = 0;
+            traj_point.orientation.z = 0;
+            traj_point.orientation.w = 1;
+            tf2::doTransform(traj_point, traj_point, tf_laser_to_map_);
+            const auto index = get_row_major_index(traj_point.position.x, traj_point.position.y);
+            if (dynamic_map_.data[index] == 100)
                 return true;
         }
-        std::cout << "Didnt Collide for " << i << std::endl;
     }
     return false;
+}
+
+/// Returns the row major index for the map
+/// @param x_map - x coordinates in map frame
+/// @param y_map - y coordinates in map frame
+/// @return row major index of the map
+int FollowWaypoints::get_row_major_index(const double x_map, const double y_map) const
+{
+    const auto x_index = static_cast<int>((x_map - map_origin_x_)/map_resolution_);
+    const auto y_index = static_cast<int>((y_map - map_origin_y_)/map_resolution_);
+    return y_index*map_cols_ + x_index;
+}
+
+void FollowWaypoints::get_global_plan_to_next_goal()
+{
+    fmt_star::plan_srv srv_message;
+
+    const auto start = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("gt_pose",ros::Duration(1));
+    const auto goal_point = goal_sequence_.front();
+
+    geometry_msgs::PoseStamped goal;
+    goal.header.frame_id = "/map";
+    goal.pose.position.x = goal_point[0];
+    goal.pose.position.y = goal_point[1];
+    goal.pose.position.z = 0;
+    goal.pose.orientation.w = 1;
+
+    if(!start)
+    {
+        ROS_ERROR("Unable to Plan. Localized location not available");
+    }
+    else
+    {
+        srv_message.request.start_position = *start;
+        srv_message.request.end_position = goal;
+        srv_message.request.update_map = true;
+    }
+
+    if (global_path_client_.call(srv_message))
+    {
+        ROS_INFO("Plan Recieved");
+        way_point_mutex_.lock();
+        way_point_data_.clear();
+        for(const auto& path_node : srv_message.response.path.poses)
+        {
+            way_point_data_.emplace_back(std::array<double ,2>{path_node.pose.position.x,
+                                                               path_node.pose.position.y});
+        }
+        current_goal_ = {goal_point[0], goal_point[1]};
+        std::rotate(goal_sequence_.begin(), goal_sequence_.begin() + 1, goal_sequence_.end());
+        way_point_mutex_.unlock();
+    }
+    else
+    {
+        ROS_ERROR("No Plan Recieved");
+    }
+}
+
+/// Sets the global level goal waypoint sequence to follow
+/// Note: This is the input given by the user manually using interactive markers
+void FollowWaypoints::set_goal_sequence()
+{
+    char quit = 'x';
+    ROS_INFO("Add Global Goal Sequence to Follow");
+    while(quit != 'q')
+    {
+        ROS_INFO("Send a 2d Nav Goal using interactive 2d nav goal marker in rviz.");
+        const auto goal = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("move_base_simple/goal",ros::Duration(20));
+        if(goal)
+        {
+            goal_sequence_.emplace_back(std::array<double ,2>{goal->pose.position.x, goal->pose.position.y});
+        }
+        ROS_INFO("Press 'q' to stop adding more points. Press any other key to continue adding to the sequence.");
+        std::cin >> quit;
+    }
+    ROS_INFO("Goal Sequence of size %i ready", goal_sequence_.size());
 }

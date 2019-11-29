@@ -4,7 +4,6 @@
 
 #include <ros/ros.h>
 #include <geometry_msgs/Pose.h>
-#include <tf2/convert.h>
 
 #include "mpc_av/mpc_solver.h"
 
@@ -16,23 +15,23 @@ mpc::MPCSolver::MPCSolver()
     params.A[1] = 0;
     params.A[2] = 0;
     params.A[3] = 1;
-    params.B[0] = 0.5;
-    params.Q[0] = 1;
+    params.B[0] = 1.0;
+    params.Q[0] = 0.3;
     params.Q[1] = 0;
     params.Q[2] = 0;
-    params.Q[3] = 1;
-    params.Q_final[0] = 1;
+    params.Q[3] = 0.3;
+    params.Q_final[0] = 2;
     params.Q_final[1] = 0;
     params.Q_final[2] = 0;
-    params.Q_final[3] = 1;
-    params.R[0] = 0;
+    params.Q_final[3] = 2;
+    params.R[0] = 1;
     params.R[1] = 0;
     params.R[2] = 0;
-    params.R[3] = 0;
+    params.R[3] = 1;
     params.x_0[0] = 0;
     params.x_0[1] = 0;
     params.u_max[0] = 0.4189;
-    params.u_max[1] = 1;
+    params.u_max[1] = 0.5;
     ROS_DEBUG("Model Loaded");
 }
 
@@ -47,9 +46,9 @@ double mpc::MPCSolver::solve_mpc(const std::array<double, 2>& required_goalpoint
     }
     ROS_DEBUG("Model Solved");
 
-    std::cout << "Final Position: " << vars.x_11[0] << " " << vars.x_11[1] << std::endl;
-    std::cout << "Input at T = 1: " << *vars.u_1 << std::endl;
-    std::cout << "*vars.u_1[1]" << vars.u_1[1] << std::endl;
+//    std::cout << "Final Position: " << vars.x_11[0] << " " << vars.x_11[1] << std::endl;
+//    std::cout << "Input at T = 1: " << *vars.u_1 << std::endl;
+//    std::cout << "*vars.u_1[1]" << vars.u_1[1] << std::endl;
 
     return *vars.u_0;
 }

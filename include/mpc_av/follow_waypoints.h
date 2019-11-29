@@ -15,6 +15,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <mutex>
 
 #include "mpc_av/csv_reader.h"
 #include "mpc_av/mpc_solver.h"
@@ -32,8 +33,14 @@ private:
     ros::Subscriber scan_sub_;
     ros::Publisher global_way_point_viz_pub_;
     ros::Publisher local_way_point_viz_pub_;
+    ros::Publisher trajectory_viz_pub_;
     ros::Publisher drive_pub_;
     ros::Publisher dynamic_map_pub_;
+
+    ros::ServiceClient global_path_client_;
+
+    std::array<double, 2> current_pose_;
+    std::array<double, 2> current_goal_;
 
     // Map
     nav_msgs::OccupancyGrid dynamic_map_;
@@ -58,6 +65,9 @@ private:
     // Input Waypoints
     std::vector<std::array<double, 2>> way_point_data_;
 
+    // Goal Sequence Waypoints
+    std::vector<std::array<double, 2>> goal_sequence_;
+
     // Transformations
     tf2_ros::TransformListener tf_listener_;
     tf2_ros::Buffer tf_buffer_;
@@ -66,9 +76,16 @@ private:
     // MPC
     mpc::MPCSolver solver_;
 
+    // Mutex
+    std::mutex way_point_mutex_;
+
     // Visualization
     bool visualization_enabled_;
     bool visualized_;
+
+    /// This is a separate thread that is responsible for getting plans and doing replanning
+    /// whenever the situation is appropriate
+    void planning_strategy_thread();
 
     /// Subscribes to the lidar message and updates the local area in the occupancy grid
     /// @param scan_msg
@@ -106,6 +123,19 @@ private:
 
     /// Checks if the path returned by mpc is in collision
     bool is_collided() const;
+
+    /// Returns the row major index for the map
+    /// @param x_map - x coordinates in map frame
+    /// @param y_map - y coordinates in map frame
+    /// @return row major index of the map
+    int get_row_major_index(const double x_map, const double y_map) const;
+
+    /// Get the global plan to the next goal in the sequence
+    void get_global_plan_to_next_goal();
+
+    /// Sets the global level goal waypoint sequence to follow
+    /// Note: This is the input given by the user manually using interactive markers
+    void set_goal_sequence();
 };
 
 #endif //SRC_FOLLOW_WAYPOINTS_H

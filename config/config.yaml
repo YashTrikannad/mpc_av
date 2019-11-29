@@ -6,8 +6,8 @@ scan_topic: "scan"
 drive_topic: "nav"
 
 # Visualization
-visualization_enabled: false
-obstacle_avoidance: false
+visualization_enabled: true
+obstacle_avoidance: true
 
 # Input CSV File Path
 csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
@@ -15,12 +15,17 @@ csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
 # Car Parameters:
 # Speed Variations
 high_speed: 5.0
-medium_speed: 4.0
-low_speed: 3.0
+medium_speed: 3.0
+low_speed: 2.0
 
 # Tracking Parameter
-lookahead_distance: 1.5
+lookahead_distance: 1.2
+
+# WayPoint Input Method
+# Options- "user" - Multiple Inputs using interactive markers
+#          "raceline" - PreComputed Raceline WayPoints
+waypoint_input: "user"
 
 # Local Map Parameter
-local_map_length: 1.5
-inflation_radius: 0 #cells
+local_map_length: 1.2
+inflation_radius: 6 #cells
