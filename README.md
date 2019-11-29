@@ -2,6 +2,8 @@
 
 This repository is beind developed for building a modern predictive controller for trajectory generation and tracking of Autonomus Vehicles.
 
+![mpc example gif](mpc_av.gif)
+
 How to use:
 
 
