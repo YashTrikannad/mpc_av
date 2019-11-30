@@ -1,6 +1,6 @@
 # mpc_av
 
-This repository is beind developed for building a modern predictive controller for trajectory generation and tracking of Autonomus Vehicles.
+This repository is beind developed for building a modern predictive controller for trajectory generation and tracking of Autonomus Vehicles. Note: This repository uses cvxgen to solve mpc optimization equations which requires a license (/acadmeic license)
 
 ![mpc example gif](mpc_av.gif)
 
