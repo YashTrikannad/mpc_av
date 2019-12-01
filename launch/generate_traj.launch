@@ -1,0 +1,6 @@
+<launch>
+
+    <rosparam command="load" file="$(find mpc_av)/config/generate_traj_config.yaml" />
+    <node pkg="mpc_av" name="generate_trajectories" type="generate_trajectories" output="screen"/>
+
+</launch>

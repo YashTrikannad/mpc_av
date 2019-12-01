@@ -2,7 +2,6 @@
 // Created by yash on 11/15/19.
 //
 
-// TODO: Remove the relative dependency
 #include <thread>
 
 #include <fmt_star/plan_srv.h>
@@ -13,10 +12,11 @@
 /// Constructs the FollowWaypoints class
 FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listener_(tf_buffer_), visualized_(false)
 {
-    std::string localized_pose_topic, drive_topic, csv_path, scan_topic, waypoint_input;
+    std::string localized_pose_topic, drive_topic, csv_path, scan_topic, waypoint_input, csv_trajectories_path;
     node_handle_.getParam("pose_topic", localized_pose_topic);
     node_handle_.getParam("drive_topic", drive_topic);
     node_handle_.getParam("csv_path", csv_path);
+    node_handle_.getParam("csv_trajectories_path", csv_trajectories_path);
     node_handle_.getParam("scan_topic", scan_topic);
     node_handle_.getParam("/lookahead_distance", lookahead_distance_);
     node_handle_.getParam("/high_speed", high_speed_);
@@ -43,9 +43,10 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     map_origin_y_ = dynamic_map_.info.origin.position.y;
     map_resolution_ = dynamic_map_.info.resolution;
 
-    solver_ = mpc::MPCSolver();
-    settings.verbose = 0;
-    settings.eps = 1e-2;
+    offline_optimization_ = true;
+    CSVReader trajectory_reader(csv_trajectories_path);
+    solved_trajectories_ = trajectory_reader.getTrajectoriesData();
+    ROS_INFO("Solved Trajectories Recieved");
 
     dynamic_map_pub_ = node_handle_.advertise<nav_msgs::OccupancyGrid>("dynamic_map", 1);
     scan_sub_ = node_handle_.subscribe(scan_topic, 1, &FollowWaypoints::scan_callback, this);
@@ -64,14 +65,18 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
         get_global_plan_to_next_goal();
         std::thread strategy_thread(&FollowWaypoints::planning_strategy_thread, this);
         strategy_thread.detach();
+        ROS_INFO("Online WayPoints Recieved");
     }
     else if(waypoint_input == "raceline")
     {
         CSVReader reader(csv_path);
         way_point_data_ = reader.getData();
+        ROS_INFO("Offline WayPoints Recieved");
     }
-
-    ROS_INFO("WayPoints Recieved");
+    else
+    {
+        ROS_WARN("Invalid waypoint_input configuration. Using Default Waypoints");
+    }
 
     ros::Duration(1.0).sleep();
     ROS_INFO("mpc_av_node Initialized");
@@ -108,8 +113,8 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
     const auto translation = tf_laser_to_map_.transform.translation;
     const double yaw = tf::getYaw(tf_laser_to_map_.transform.rotation);
 
-    const auto start = static_cast<int>(scan_msg->ranges.size()/6);
-    const auto end = static_cast<int>(5*scan_msg->ranges.size()/6);
+    const auto start = static_cast<int>(scan_msg->ranges.size()/4);
+    const auto end = static_cast<int>(3*scan_msg->ranges.size()/4);
     const double angle_increment = scan_msg->angle_increment;
     double theta = scan_msg->angle_min + angle_increment*(start-1);
 
@@ -189,7 +194,7 @@ void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &
     add_way_point_visualization({goal_way_point.position.x, goal_way_point.position.y}, &local_way_point_viz_pub_,
             "base_link", "local_waypoint", 1, 0.0, 0.0, 1.0, 0.3, 0.2, 0.2, 0.2);
 
-    const auto input = solve_mpc(goal_way_point.position.y, goal_way_point.position.x);
+    const double input = get_best_trajectory_input(goal_way_point.position.x, goal_way_point.position.y);
 
     publish_corrected_speed_and_steering(input);
 }
@@ -206,8 +211,6 @@ void FollowWaypoints::publish_corrected_speed_and_steering(double steering_angle
 
     drive_msg.drive.steering_angle = steering_angle;
     drive_msg.drive.speed = high_speed_;
-
-    std::cout<< high_speed_ << " " << medium_speed_ << " " << low_speed_ << "\n";
 
     if(steering_angle > 0.1)
     {
@@ -231,13 +234,7 @@ void FollowWaypoints::publish_corrected_speed_and_steering(double steering_angle
             drive_msg.drive.speed = medium_speed_;
         }
     }
-    else
-    {
-        drive_msg.drive.speed = high_speed_;
-    }
 
-    std::cout << "speed: " << drive_msg.drive.speed << " ";
-    std::cout << "angle: " << drive_msg.drive.steering_angle << "\n";
     drive_pub_.publish(drive_msg);
 }
 
@@ -313,97 +310,128 @@ std::vector<int> FollowWaypoints::get_expanded_row_major_indices(const double x_
     return expanded_row_major_indices;
 }
 
-/// Solves the MPC problem between the current pose and the required goal point
-/// @param required_goalpoint - (y, x) of car in local frame
-/// @return steering angle for the car
-double FollowWaypoints::solve_mpc(const double goal_y, const double goal_x)
+/// Checks if there is collision between two points (x1, y1) and (x2, y2)
+/// @param x1 - base link frame
+/// @param y1 - base link frame
+/// @param x2 - base link frame
+/// @param y2 - base link frame
+/// @param n - n divisions for checking
+/// @return true if there is collision. false otherwise
+bool FollowWaypoints::is_collided(double x1, double y1, double x2, double y2) const
 {
-    double input_original = solver_.solve_mpc({goal_y, goal_x});
-    int unique_id = 1;
-    auto visualize_traj = [&](){
-        if(visualization_enabled_)
-        {
-            visualization_msgs::Marker line_strip;
-            line_strip.header.frame_id = "/base_link";
-            line_strip.ns = "trajectories";
-            line_strip.action = visualization_msgs::Marker::ADD;
-            line_strip.pose.orientation.w = 1.0;
-            line_strip.id = unique_id++;
-            line_strip.type = visualization_msgs::Marker::LINE_STRIP;
-            line_strip.scale.x = 0.1;
-            line_strip.color.b = 1.0;
-            line_strip.color.a = 1.0;
-            line_strip.id = 1;
-            line_strip.lifetime = ros::Duration(0.1);
-            line_strip.header.stamp =ros::Time::now();
-            for(int i=1; i< 12; i++)
-            {
-                geometry_msgs::Point p;
-                p.x = vars.x[i][1];
-                p.y = vars.x[i][0];
-                p.z = 0;
-                line_strip.points.push_back(p);
-            }
-            trajectory_viz_pub_.publish(line_strip);
-        }
-    };
-
-    if(!obstacle_avoidance_ || !is_collided())
+    for(int i=1; i<4; i++)
     {
-        visualize_traj();
-        return input_original;
-    }
-
-    double increment_x = 0.02;
-    double increment_y = 0.03;
-    double positive_goal_y = goal_y;
-    double negative_goal_y = goal_y;
-    double negative_goal_x = goal_x;
-    double input = 0;
-    for(int i=0; i< 20; i++)
-    {
-        positive_goal_y += increment_y;
-        negative_goal_y -= increment_y;
-        negative_goal_x -= increment_x;
-        input = solver_.solve_mpc({positive_goal_y, negative_goal_x});
-        if(!is_collided())
-        {
-            visualize_traj();
-            return input;
-        }
-        input = solver_.solve_mpc({negative_goal_y, negative_goal_x});
-        if(!is_collided())
-        {
-            visualize_traj();
-            return input;
-        }
-    }
-    ROS_ERROR("MPC was not able to find a Path");
-    return input_original;
-}
-
-/// Checks if the path returned by mpc is in collision
-bool FollowWaypoints::is_collided() const
-{
-    for(int i=1; i<10; i++)
-    {
-        for(int j=0; j<1; j++)
-        {
-            geometry_msgs::Pose traj_point;
-            traj_point.position.x = vars.x[i][1] + 0.1*j*(vars.x[i + 1][1]-vars.x[i][1]);
-            traj_point.position.y = vars.x[i][0] + 0.1*j*(vars.x[i + 1][0]-vars.x[i][0]);
-            traj_point.position.z = 0;
-            traj_point.orientation.x = 0;
-            traj_point.orientation.y = 0;
-            traj_point.orientation.z = 0;
-            traj_point.orientation.w = 1;
-            tf2::doTransform(traj_point, traj_point, tf_laser_to_map_);
-            const auto index = get_row_major_index(traj_point.position.x, traj_point.position.y);
-            if (dynamic_map_.data[index] == 100)
-                return true;
-        }
+        geometry_msgs::Pose traj_point;
+        traj_point.position.x = (1-(0.3*i))*x1 + 0.3*i*x2;
+        traj_point.position.y = (1-(0.3*i))*y1 + 0.3*i*y2;
+        traj_point.position.z = 0;
+        traj_point.orientation.x = 0;
+        traj_point.orientation.y = 0;
+        traj_point.orientation.z = 0;
+        traj_point.orientation.w = 1;
+        tf2::doTransform(traj_point, traj_point, tf_laser_to_map_);
+        const auto index = get_row_major_index(traj_point.position.x, traj_point.position.y);
+        if (dynamic_map_.data[index] == 100)
+            return true;
     }
     return false;
+}
+
+double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y)
+{
+    ROS_DEBUG("Getting Best Trajectory ");
+    int unique_id = 1;
+    auto visualize_traj = [&](const std::vector<geometry_msgs::Pose>& states) {
+        visualization_msgs::Marker line_strip;
+        line_strip.header.frame_id = "/base_link";
+        line_strip.ns = "trajectories";
+        line_strip.action = visualization_msgs::Marker::ADD;
+        line_strip.pose.orientation.w = 1.0;
+        line_strip.id = unique_id++;
+        line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+        line_strip.scale.x = 0.1;
+        line_strip.color.b = 1.0;
+        line_strip.color.a = 1.0;
+        line_strip.id = 1;
+        line_strip.lifetime = ros::Duration(0.1);
+        line_strip.header.stamp = ros::Time::now();
+        geometry_msgs::Point start;
+        start.x = 0;
+        start.y = 0;
+        start.z = 0;
+        line_strip.points.emplace_back(start);
+        for (const auto &state : states)
+        {
+            geometry_msgs::Point p;
+            p.x = state.position.x;
+            p.y = state.position.y;
+            p.z = 0;
+            line_strip.points.emplace_back(p);
+        }
+        trajectory_viz_pub_.publish(line_strip);
+    };
+
+    double best_cost = std::numeric_limits<double >::max();
+    double best_input = 0;
+    int best_index = -1;
+
+    const int trajectory_state_size = solved_trajectories_[0].states.size();
+
+    ROS_DEBUG("Starting Iteration");
+    for(int i=0; i<solved_trajectories_.size(); i++)
+    {
+        bool collision = false;
+        for(int j=0; j<solved_trajectories_[i].states.size(); j++)
+        {
+            geometry_msgs::Pose map_frame_state;
+            tf2::doTransform(solved_trajectories_[i].states[j], map_frame_state, tf_laser_to_map_);
+            if (dynamic_map_.data[get_row_major_index(map_frame_state.position.x, map_frame_state.position.y)] == 100)
+            {
+                collision = true;
+                break;
+            }
+            if(j==0)
+            {
+               if(is_collided(0, 0,
+                            solved_trajectories_[i].states[1].position.x, solved_trajectories_[i].states[1].position.y))
+               {
+                   collision = true;
+                   break;
+               }
+            }
+            else if(is_collided(solved_trajectories_[i].states[j-1].position.x, solved_trajectories_[i].states[j-1].position.y,
+                                solved_trajectories_[i].states[j].position.x, solved_trajectories_[i].states[j].position.y))
+            {
+                collision = true;
+                break;
+            }
+        }
+
+        if(collision)
+        {
+            continue;
+        }
+
+        double current_cost = sqrt(pow(solved_trajectories_[i].states[trajectory_state_size-1].position.x - goal_x,2) +
+                pow(solved_trajectories_[i].states[trajectory_state_size-1].position.y - goal_y,2));
+
+        if(current_cost < best_cost)
+        {
+            best_cost = current_cost;
+            best_input = solved_trajectories_[i].steering_input;
+            best_index = i;
+        }
+    }
+    if(best_index == -1)
+    {
+        ROS_ERROR("Failed to Find a Feasible Trajectory");
+        return 0;
+    }
+    if(visualization_enabled_)
+    {
+        visualize_traj(solved_trajectories_[best_index].states);
+    }
+    return best_input;
 }
 
 /// Returns the row major index for the map

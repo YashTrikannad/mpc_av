@@ -143,10 +143,21 @@ add_executable(${PROJECT_NAME}_node
         src/visualisation.cpp)
 
 target_link_libraries(${PROJECT_NAME}_node
+        ${catkin_LIBRARIES}
         ${PROJECT_SOURCE_DIR}/include/cvxgen/solver.o
         ${PROJECT_SOURCE_DIR}/include/cvxgen/ldl.o
         ${PROJECT_SOURCE_DIR}/include/cvxgen/util.o
         ${PROJECT_SOURCE_DIR}/include/cvxgen/matrix_support.o)
+
+add_executable(generate_trajectories src/generate_trajectories.cpp src/mpc_solver.cpp)
+
+target_link_libraries(generate_trajectories
+        ${catkin_LIBRARIES}
+        ${PROJECT_SOURCE_DIR}/include/cvxgen/solver.o
+        ${PROJECT_SOURCE_DIR}/include/cvxgen/ldl.o
+        ${PROJECT_SOURCE_DIR}/include/cvxgen/util.o
+        ${PROJECT_SOURCE_DIR}/include/cvxgen/matrix_support.o)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -159,9 +170,9 @@ target_link_libraries(${PROJECT_NAME}_node
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_node
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(${PROJECT_NAME}_node
+#  ${catkin_LIBRARIES}
+#)
 
 #############
 ## Install ##

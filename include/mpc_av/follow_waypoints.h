@@ -62,6 +62,10 @@ private:
     double medium_speed_;
     double low_speed_;
 
+    // MPC solved trajectories
+    bool offline_optimization_;
+    std::vector<trajectory> solved_trajectories_;
+
     // Input Waypoints
     std::vector<std::array<double, 2>> way_point_data_;
 
@@ -72,9 +76,6 @@ private:
     tf2_ros::TransformListener tf_listener_;
     tf2_ros::Buffer tf_buffer_;
     geometry_msgs::TransformStamped tf_laser_to_map_;
-
-    // MPC
-    mpc::MPCSolver solver_;
 
     // Mutex
     std::mutex way_point_mutex_;
@@ -115,14 +116,21 @@ private:
     /// @return row major index of the map
     std::vector<int> get_expanded_row_major_indices(double x_map, double y_map) const;
 
-    /// Solves the MPC problem between the current pose and the required goal point
-    /// @param goal_y - y in car frame
-    /// @param goal_x - x in car frame
-    /// @return steering angle for the car
-    double solve_mpc(const double goal_y, const double goal_x);
+    /// Finds the Best Trajectory to follow from the offline trajectories solved and returns the steering
+    /// angle at input at time = 0
+    /// @param goal_x - car frame x
+    /// @param goal_y - car frame y
+    /// @return
+    double get_best_trajectory_input(const double goal_x, const double goal_y);
 
-    /// Checks if the path returned by mpc is in collision
-    bool is_collided() const;
+    /// Checks if there is collision between two points (x1, y1) and (x2, y2)
+    /// @param x1 - base link frame
+    /// @param y1 - base link frame
+    /// @param x2 - base link frame
+    /// @param y2 - base link frame
+    /// @param n - n divisions for checking
+    /// @return true if there is collision. false otherwise
+    bool is_collided(double x1, double y1, double x2, double y2) const;
 
     /// Returns the row major index for the map
     /// @param x_map - x coordinates in map frame

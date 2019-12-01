@@ -11,21 +11,22 @@ obstacle_avoidance: true
 
 # Input CSV File Path
 csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
+csv_trajectories_path: "/home/yash/yasht_ws/src/mpc_av/trajectories.csv"
 
 # Car Parameters:
 # Speed Variations
-high_speed: 5.0
-medium_speed: 3.0
+high_speed: 3.5
+medium_speed: 2.5
 low_speed: 2.0
 
 # Tracking Parameter
-lookahead_distance: 1.2
+lookahead_distance: 1.6
 
 # WayPoint Input Method
-# Options- "user" - Multiple Inputs using interactive markers
-#          "raceline" - PreComputed Raceline WayPoints
+# Options- 'user' - Multiple Inputs using interactive markers
+#          'raceline' - PreComputed Raceline WayPoints
 waypoint_input: "user"
 
 # Local Map Parameter
-local_map_length: 1.2
-inflation_radius: 6 #cells
+local_map_length: 1.6
+inflation_radius: 4 #cells

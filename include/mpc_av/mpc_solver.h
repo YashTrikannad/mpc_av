@@ -15,7 +15,11 @@ namespace mpc
 class MPCSolver
 {
 public:
-    MPCSolver();
+    MPCSolver(const std::array<double, 4>& Q,
+              const std::array<double, 4>& Qf,
+              const std::array<double, 4>& R,
+              double B,
+              double S);
 
     /// Solves the mpc
     /// @param required_goalwaypoint (y, x) in car's frame
