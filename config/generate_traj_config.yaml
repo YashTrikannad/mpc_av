@@ -1,13 +1,13 @@
 # This YAML file contains config parameters for generating the trajectories.csv file
 
 # Input Matrix (V*dt)
-B: 0.8
+B: 0.7
 
 # Cost for Error for each intermediate State
-Q0: 0.3
+Q0: 1.0
 Q1: 0
 Q2: 0
-Q3: 0.15
+Q3: 1.0
 
 # Cost for Error in Final State
 Qf0: 5
@@ -16,10 +16,10 @@ Qf2: 0
 Qf3: 5
 
 # Cost for State Change
-R0: 0.01
+R0: 0.1
 R1: 0
 R2: 0
-R3: 0.01
+R3: 0.1
 
 # Slew Rate
-S: 10
+S: 100

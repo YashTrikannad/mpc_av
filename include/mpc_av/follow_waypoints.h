@@ -15,6 +15,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Odometry.h>
 #include <mutex>
 
 #include "mpc_av/csv_reader.h"
@@ -58,12 +59,8 @@ private:
 
     // Tracking and Speed
     double lookahead_distance_;
-    double high_speed_;
-    double medium_speed_;
-    double low_speed_;
 
     // MPC solved trajectories
-    bool offline_optimization_;
     std::vector<trajectory> solved_trajectories_;
 
     // Input Waypoints
@@ -94,11 +91,7 @@ private:
 
     /// Subscribes to the current pose, follows the next waypoint and updates the steering angle accordingly
     /// @param pose_msg - Localized Pose of the Robot
-    void pose_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg);
-
-    /// Publishes the appropriate speed based on the steering angle
-    /// @param steering_angle
-    void publish_corrected_speed_and_steering(double steering_angle);
+    void pose_callback(const nav_msgs::Odometry::ConstPtr &odom_msg);
 
     /// Transforms all the waypoints from the map to the car frame
     /// @return waypoints transformed in the car frame
@@ -110,6 +103,12 @@ private:
     /// @return index of the best trackpoint
     size_t get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints, double lookahead_distance);
 
+    /// Gets a Required Heading Angle for the goal way point index in map frame
+    /// @param waypoints
+    /// @param goal_way_point_index
+    /// @return heading angle for the waypoing (in radians in map frame)
+    double get_waypoint_heading(const std::vector<std::array<double, 2>>& waypoints, int goal_way_point_index);
+
     /// Returns the row major indices for the map of an inflated area around a point based on inflation radius
     /// @param x_map - x coordinates in map frame
     /// @param y_map - y coordinates in map frame
@@ -120,8 +119,9 @@ private:
     /// angle at input at time = 0
     /// @param goal_x - car frame x
     /// @param goal_y - car frame y
+    /// @param goal_heading - map frame
     /// @return
-    double get_best_trajectory_input(const double goal_x, const double goal_y);
+    double get_best_trajectory_input(const double goal_x, const double goal_y, double goal_heading);
 
     /// Checks if there is collision between two points (x1, y1) and (x2, y2)
     /// @param x1 - base link frame

@@ -15,7 +15,7 @@
 
 struct trajectory
 {
-    double goal_x, goal_y;
+    double goal_x, goal_y, goal_heading;
     double steering_input;
     std::vector<geometry_msgs::Pose> states;
 };
@@ -81,6 +81,7 @@ public:
             trajectory curr_traj;
             curr_traj.goal_x = std::stod(goal_vec[0]);
             curr_traj.goal_y = std::stod(goal_vec[1]);
+            curr_traj.goal_heading = std::stod(goal_vec[2]);
 
             line = "";
             getline(file, line);

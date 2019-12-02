@@ -24,12 +24,12 @@ public:
     /// Solves the mpc
     /// @param required_goalwaypoint (y, x) in car's frame
     /// @return steering angle
-    double solve_mpc(const std::array<double, 2>& required_goalwaypoint);
+    double solve_mpc(const std::array<double, 3>& required_goalwaypoint);
 
 private:
 
     /// Loads the model parameters into the mpc solver
-    void update_model(const std::array<double, 2>& required_goalpoint);
+    void update_model(const std::array<double, 3>& required_goalpoint);
 };
 
 } // mpc

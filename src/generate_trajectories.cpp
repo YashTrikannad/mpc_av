@@ -12,12 +12,13 @@ Params params;
 Workspace work;
 Settings settings;
 
-static const double x_min = 0.5;
-static const double x_max = 2.0;
-static const double y_min =-1.0;
-static const double y_max = 1.0;
-static const double x_dt = 0.1;
-static const double y_dt = 0.1;
+static const double x_min = 1.3;
+static const double x_max = 1.6;
+static const double y_min =-1.5;
+static const double y_max = 1.5;
+static const double x_dt = 0.2;
+static const double y_dt = 0.2;
+static const std::array<double, 5> theta_range = {-0.2, -0.1, 0.0, 0.1, 0.2};
 
 /// Format of CSV Generated
 /// x_curr, y_curr,
@@ -61,21 +62,24 @@ int main(int argc, char **argv)
 
     mpc::MPCSolver solver(Q, Qf, R, B, S);
     settings.verbose = 0;
-    settings.eps = 1e-2;
+    settings.eps = 1e-4;
 
     while(x_curr < x_max)
     {
         while(y_curr < y_max)
         {
-            const std::array<double, 2> current_goal{y_curr, x_curr};
-            const double input = solver.solve_mpc(current_goal);
-            trajectories_file << x_curr << ", " << y_curr << ", \n";
-            trajectories_file << input << ", \n";
-            for(int i=1; i<11; i++)
+            for(const auto& theta: theta_range)
             {
-                trajectories_file << vars.x[i][1] << ", " << vars.x[i][0] << ", ";
+                const std::array<double, 3> current_goal{y_curr, x_curr, theta};
+                const double input = solver.solve_mpc(current_goal);
+                trajectories_file << x_curr << ", " << y_curr << ", " << theta << ", \n";
+                trajectories_file << input << ", \n";
+                for(int i=1; i<11; i++)
+                {
+                    trajectories_file << vars.x[i][1] << ", " << vars.x[i][0] << ", ";
+                }
+                trajectories_file << "\n";
             }
-            trajectories_file << "\n";
             y_curr = y_curr + y_dt;
         }
         y_curr = y_min;

@@ -36,12 +36,12 @@ mpc::MPCSolver::MPCSolver(const std::array<double, 4>& Q,
     params.x_0[0] = 0;
     params.x_0[1] = 0;
     params.u_max[0] = 0.4189;
-    params.u_max[1] = 1.0;
+    params.u_max[1] = 5.0;
     ROS_DEBUG("Model Loaded");
 }
 
 
-double mpc::MPCSolver::solve_mpc(const std::array<double, 2>& required_goalpoint)
+double mpc::MPCSolver::solve_mpc(const std::array<double, 3>& required_goalpoint)
 {
     update_model(required_goalpoint);
     solve();
@@ -58,9 +58,10 @@ double mpc::MPCSolver::solve_mpc(const std::array<double, 2>& required_goalpoint
     return *vars.u_0;
 }
 
-void mpc::MPCSolver::update_model(const std::array<double, 2>& required_goalpoint)
+void mpc::MPCSolver::update_model(const std::array<double, 3>& required_goalpoint)
 {
     params.w[0] = required_goalpoint[0];
     params.w[1] = required_goalpoint[1];
+    params.u_f[0] = required_goalpoint[2];
     ROS_DEBUG("Model Updated");
 }

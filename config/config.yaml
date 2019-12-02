@@ -1,7 +1,7 @@
 # Parameter Configuration File for MPC Trajectory Generator
 
 # ROS Topic Names
-pose_topic: "gt_pose"
+pose_topic: "pf/pose/odom"
 scan_topic: "scan"
 drive_topic: "nav"
 
@@ -13,20 +13,14 @@ obstacle_avoidance: true
 csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
 csv_trajectories_path: "/home/yash/yasht_ws/src/mpc_av/trajectories.csv"
 
-# Car Parameters:
-# Speed Variations
-high_speed: 3.5
-medium_speed: 2.5
-low_speed: 2.0
-
 # Tracking Parameter
-lookahead_distance: 1.6
+lookahead_distance: 1.5
 
 # WayPoint Input Method
 # Options- 'user' - Multiple Inputs using interactive markers
 #          'raceline' - PreComputed Raceline WayPoints
-waypoint_input: "user"
+waypoint_input: "raceline"
 
 # Local Map Parameter
-local_map_length: 1.6
+local_map_length: 1.5
 inflation_radius: 4 #cells

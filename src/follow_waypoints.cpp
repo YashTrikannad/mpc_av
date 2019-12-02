@@ -8,20 +8,18 @@
 
 #include "mpc_av/follow_waypoints.h"
 #include "mpc_av/mpc_solver.h"
+#include "mpc_av/car_util.h"
 
 /// Constructs the FollowWaypoints class
 FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listener_(tf_buffer_), visualized_(false)
 {
-    std::string localized_pose_topic, drive_topic, csv_path, scan_topic, waypoint_input, csv_trajectories_path;
-    node_handle_.getParam("pose_topic", localized_pose_topic);
+    std::string pose_topic, drive_topic, csv_path, scan_topic, waypoint_input, csv_trajectories_path;
+    node_handle_.getParam("pose_topic", pose_topic);
     node_handle_.getParam("drive_topic", drive_topic);
     node_handle_.getParam("csv_path", csv_path);
     node_handle_.getParam("csv_trajectories_path", csv_trajectories_path);
     node_handle_.getParam("scan_topic", scan_topic);
     node_handle_.getParam("/lookahead_distance", lookahead_distance_);
-    node_handle_.getParam("/high_speed", high_speed_);
-    node_handle_.getParam("/medium_speed", medium_speed_);
-    node_handle_.getParam("/low_speed", low_speed_);
     node_handle_.getParam("/visualization_enabled", visualization_enabled_);
     node_handle_.getParam("/local_map_length", local_map_length_);
     node_handle_.getParam("/inflation_radius", inflation_radius_);
@@ -43,7 +41,6 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     map_origin_y_ = dynamic_map_.info.origin.position.y;
     map_resolution_ = dynamic_map_.info.resolution;
 
-    offline_optimization_ = true;
     CSVReader trajectory_reader(csv_trajectories_path);
     solved_trajectories_ = trajectory_reader.getTrajectoriesData();
     ROS_INFO("Solved Trajectories Recieved");
@@ -51,7 +48,7 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     dynamic_map_pub_ = node_handle_.advertise<nav_msgs::OccupancyGrid>("dynamic_map", 1);
     scan_sub_ = node_handle_.subscribe(scan_topic, 1, &FollowWaypoints::scan_callback, this);
     sleep(1);
-    pose_sub_ = node_handle_.subscribe(localized_pose_topic, 5, &FollowWaypoints::pose_callback, this);
+    pose_sub_ = node_handle_.subscribe(pose_topic, 5, &FollowWaypoints::pose_callback, this);
 
     drive_pub_ = node_handle_.advertise<ackermann_msgs::AckermannDriveStamped>(drive_topic, 1);
     global_way_point_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("global_waypoint_markers", 100);
@@ -148,7 +145,7 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
     }
 
     clear_obstacles_count_++;
-    if(clear_obstacles_count_ > 100)
+    if(clear_obstacles_count_ > 50)
     {
         for(const auto index: new_obstacles_)
         {
@@ -165,9 +162,9 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
 
 /// Subscribes to the current pose, follows the next waypoint and updates the steering angle accordingly
 /// @param pose_msg - Localized Pose of the Robot
-void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
+void FollowWaypoints::pose_callback(const nav_msgs::Odometry::ConstPtr &odom_msg)
 {
-    current_pose_ = {pose_msg->pose.position.x, pose_msg->pose.position.y};
+    current_pose_ = {odom_msg->pose.pose.position.x, odom_msg->pose.pose.position.y};
     if(visualization_enabled_ && !visualized_)
     {
         visualize_waypoint_data(way_point_data_, &global_way_point_viz_pub_, "map");
@@ -178,6 +175,8 @@ void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &
 
     // Find the best waypoint to track (at lookahead distance)
     const auto goal_way_point_index = get_global_trackpoint(transformed_way_points, lookahead_distance_);
+
+    const auto goal_way_point_heading = get_waypoint_heading(transformed_way_points, goal_way_point_index);
 
     geometry_msgs::TransformStamped map_to_base_link;
     map_to_base_link = tf_buffer_.lookupTransform("base_link", "map", ros::Time(0));
@@ -191,50 +190,23 @@ void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &
     goal_way_point.orientation.w = 1;
     tf2::doTransform(goal_way_point, goal_way_point, map_to_base_link);
 
-    add_way_point_visualization({goal_way_point.position.x, goal_way_point.position.y}, &local_way_point_viz_pub_,
-            "base_link", "local_waypoint", 1, 0.0, 0.0, 1.0, 0.3, 0.2, 0.2, 0.2);
+    if(visualization_enabled_)
+    {
+        add_way_point_visualization({goal_way_point.position.x, goal_way_point.position.y}, &local_way_point_viz_pub_,
+                                    "base_link", "local_waypoint", 1, 0.0, 0.0, 1.0, 0.3, 0.2, 0.2, 0.2);
+    }
 
-    const double input = get_best_trajectory_input(goal_way_point.position.x, goal_way_point.position.y);
+    const double input = get_best_trajectory_input(goal_way_point.position.x,
+            goal_way_point.position.y,
+            goal_way_point_heading);
 
-    publish_corrected_speed_and_steering(input);
-}
+    const double steering_speed = get_steering_speed(input);
 
-
-/// Returns the appropriate speed based on the steering angle
-/// @param steering_angle
-/// @return
-void FollowWaypoints::publish_corrected_speed_and_steering(double steering_angle)
-{
     ackermann_msgs::AckermannDriveStamped drive_msg;
     drive_msg.header.stamp = ros::Time::now();
     drive_msg.header.frame_id = "base_link";
-
-    drive_msg.drive.steering_angle = steering_angle;
-    drive_msg.drive.speed = high_speed_;
-
-    if(steering_angle > 0.1)
-    {
-        if (steering_angle > 0.2)
-        {
-            drive_msg.drive.speed = low_speed_;
-        }
-        else
-        {
-            drive_msg.drive.speed = medium_speed_;
-        }
-    }
-    else if(steering_angle < -0.1)
-    {
-        if (steering_angle < -0.2)
-        {
-            drive_msg.drive.speed = low_speed_;
-        }
-        else
-        {
-            drive_msg.drive.speed = medium_speed_;
-        }
-    }
-
+    drive_msg.drive.steering_angle = input;
+    drive_msg.drive.speed = steering_speed;
     drive_pub_.publish(drive_msg);
 }
 
@@ -272,7 +244,6 @@ std::vector<std::array<double, 2>> FollowWaypoints::transform_waypoints_to_car_f
 size_t FollowWaypoints::get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints, double lookahead_distance)
 {
     double closest_distance = std::numeric_limits<double>::max();
-    const size_t way_point_size = waypoints.size();
     int best_index = -1;
 
     for(size_t i=0; i <waypoints.size(); ++i)
@@ -289,6 +260,30 @@ size_t FollowWaypoints::get_global_trackpoint(const std::vector<std::array<doubl
     }
 
     return best_index;
+}
+
+/// Gets a Required Heading Angle for the goal way point index in map frame
+/// @param goal_way_point_index
+/// @return heading angle for the waypoing (in radians in map frame)
+double FollowWaypoints::get_waypoint_heading(const std::vector<std::array<double, 2>>& waypoints, int goal_way_point_index)
+{
+    const int start = [&](){
+        if(goal_way_point_index == 0) return 0;
+        if(goal_way_point_index == waypoints.size()) return static_cast<int>(waypoints.size()-3);
+        else return goal_way_point_index-1;
+    }();
+
+    auto angle = [&](int endpoint_index_1, int endpoint_index_2){
+        return atan2(waypoints[endpoint_index_2][1] - waypoints[endpoint_index_1][1],
+                     waypoints[endpoint_index_2][0] - waypoints[endpoint_index_1][1]);
+    };
+
+    double average_angle = 0;
+    for(int index=start; index<start+2; index++)
+    {
+        average_angle += angle(index, index+1);
+    }
+    return average_angle;
 }
 
 /// Returns the row major indeices for the map of an inflated area around a point based on inflation radius
@@ -337,7 +332,7 @@ bool FollowWaypoints::is_collided(double x1, double y1, double x2, double y2) co
     return false;
 }
 
-double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y)
+double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y, double goal_heading)
 {
     ROS_DEBUG("Getting Best Trajectory ");
     int unique_id = 1;
@@ -378,13 +373,27 @@ double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y)
     const int trajectory_state_size = solved_trajectories_[0].states.size();
 
     ROS_DEBUG("Starting Iteration");
-    for(int i=0; i<solved_trajectories_.size(); i++)
+    for(int i=0; i<solved_trajectories_.size(); i=i+5)
     {
+        // Narrow down the best final heading angle based on the current required heading angle
+        int best_heading_index = -1;
+        double best_heading_cost = std::numeric_limits<double >::max();
+        for(int k=i; k<i+5; k++)
+        {
+            double heading_cost = pow(solved_trajectories_[k].goal_heading - goal_heading, 2);
+            if(heading_cost < best_heading_cost)
+            {
+                best_heading_cost = heading_cost;
+                best_heading_index = k;
+            }
+        }
+
+        // Collision Checking
         bool collision = false;
-        for(int j=0; j<solved_trajectories_[i].states.size(); j++)
+        for(int j=0; j<solved_trajectories_[best_heading_index].states.size(); j++)
         {
             geometry_msgs::Pose map_frame_state;
-            tf2::doTransform(solved_trajectories_[i].states[j], map_frame_state, tf_laser_to_map_);
+            tf2::doTransform(solved_trajectories_[best_heading_index].states[j], map_frame_state, tf_laser_to_map_);
             if (dynamic_map_.data[get_row_major_index(map_frame_state.position.x, map_frame_state.position.y)] == 100)
             {
                 collision = true;
@@ -393,33 +402,33 @@ double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y)
             if(j==0)
             {
                if(is_collided(0, 0,
-                            solved_trajectories_[i].states[1].position.x, solved_trajectories_[i].states[1].position.y))
+                            solved_trajectories_[best_heading_index].states[1].position.x, solved_trajectories_[best_heading_index].states[1].position.y))
                {
                    collision = true;
                    break;
                }
             }
-            else if(is_collided(solved_trajectories_[i].states[j-1].position.x, solved_trajectories_[i].states[j-1].position.y,
-                                solved_trajectories_[i].states[j].position.x, solved_trajectories_[i].states[j].position.y))
+            else if(j < 5 && is_collided(solved_trajectories_[best_heading_index].states[j-1].position.x, solved_trajectories_[best_heading_index].states[j-1].position.y,
+                                solved_trajectories_[best_heading_index].states[j].position.x, solved_trajectories_[best_heading_index].states[j].position.y))
             {
                 collision = true;
                 break;
             }
         }
-
         if(collision)
         {
             continue;
         }
 
-        double current_cost = sqrt(pow(solved_trajectories_[i].states[trajectory_state_size-1].position.x - goal_x,2) +
-                pow(solved_trajectories_[i].states[trajectory_state_size-1].position.y - goal_y,2));
+        // If no collisions, cost the trajectories
+        double current_cost = pow(solved_trajectories_[best_heading_index].states[trajectory_state_size-1].position.x - goal_x,2) +
+                pow(solved_trajectories_[best_heading_index].states[trajectory_state_size-1].position.y - goal_y,2);
 
         if(current_cost < best_cost)
         {
             best_cost = current_cost;
-            best_input = solved_trajectories_[i].steering_input;
-            best_index = i;
+            best_input = solved_trajectories_[best_heading_index].steering_input;
+            best_index = best_heading_index;
         }
     }
     if(best_index == -1)
