@@ -5,6 +5,7 @@
 #include <thread>
 
 #include <fmt_star/plan_srv.h>
+#include <std_msgs/Bool.h>
 
 #include "mpc_av/follow_waypoints.h"
 #include "mpc_av/mpc_solver.h"
@@ -45,15 +46,14 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     solved_trajectories_ = trajectory_reader.getTrajectoriesData();
     ROS_INFO("Solved Trajectories Recieved");
 
-    dynamic_map_pub_ = node_handle_.advertise<nav_msgs::OccupancyGrid>("dynamic_map", 1);
-    scan_sub_ = node_handle_.subscribe(scan_topic, 1, &FollowWaypoints::scan_callback, this);
-    sleep(1);
-    pose_sub_ = node_handle_.subscribe(pose_topic, 5, &FollowWaypoints::pose_callback, this);
+    scan_sub_ = node_handle_.subscribe(scan_topic, 10, &FollowWaypoints::scan_callback, this);
+    ros::Duration(1.0).sleep();
+    pose_sub_ = node_handle_.subscribe(pose_topic, 10, &FollowWaypoints::pose_callback, this);
 
     drive_pub_ = node_handle_.advertise<ackermann_msgs::AckermannDriveStamped>(drive_topic, 1);
     global_way_point_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("global_waypoint_markers", 100);
     local_way_point_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("local_waypoint_markers", 1);
-    trajectory_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("trajectory_marker", 10);
+    trajectory_viz_pub_ = node_handle_.advertise<visualization_msgs::Marker>("trajectory_marker", 1);
 
     if(waypoint_input == "user")
     {
@@ -155,8 +155,6 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
         clear_obstacles_count_ = 0;
         ROS_INFO("Obstacles Cleared");
     }
-
-    dynamic_map_pub_.publish(dynamic_map_);
     ROS_INFO("Map Updated");
 }
 
@@ -373,12 +371,12 @@ double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y, 
     const int trajectory_state_size = solved_trajectories_[0].states.size();
 
     ROS_DEBUG("Starting Iteration");
-    for(int i=0; i<solved_trajectories_.size(); i=i+5)
+    for(int i=0; i<solved_trajectories_.size(); i=i+9)
     {
         // Narrow down the best final heading angle based on the current required heading angle
         int best_heading_index = -1;
         double best_heading_cost = std::numeric_limits<double >::max();
-        for(int k=i; k<i+5; k++)
+        for(int k=i; k<i+9; k++)
         {
             double heading_cost = pow(solved_trajectories_[k].goal_heading - goal_heading, 2);
             if(heading_cost < best_heading_cost)
@@ -390,26 +388,11 @@ double FollowWaypoints::get_best_trajectory_input(double goal_x, double goal_y, 
 
         // Collision Checking
         bool collision = false;
-        for(int j=0; j<solved_trajectories_[best_heading_index].states.size(); j++)
+        for(const auto& state : solved_trajectories_[best_heading_index].states)
         {
             geometry_msgs::Pose map_frame_state;
-            tf2::doTransform(solved_trajectories_[best_heading_index].states[j], map_frame_state, tf_laser_to_map_);
+            tf2::doTransform(state, map_frame_state, tf_laser_to_map_);
             if (dynamic_map_.data[get_row_major_index(map_frame_state.position.x, map_frame_state.position.y)] == 100)
-            {
-                collision = true;
-                break;
-            }
-            if(j==0)
-            {
-               if(is_collided(0, 0,
-                            solved_trajectories_[best_heading_index].states[1].position.x, solved_trajectories_[best_heading_index].states[1].position.y))
-               {
-                   collision = true;
-                   break;
-               }
-            }
-            else if(j < 5 && is_collided(solved_trajectories_[best_heading_index].states[j-1].position.x, solved_trajectories_[best_heading_index].states[j-1].position.y,
-                                solved_trajectories_[best_heading_index].states[j].position.x, solved_trajectories_[best_heading_index].states[j].position.y))
             {
                 collision = true;
                 break;

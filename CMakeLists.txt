@@ -8,10 +8,10 @@ project(mpc_av)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  tf2_ros
-  fmt_star
+             roscpp
+             std_msgs
+             tf2_ros
+             fmt_star
 )
 
 ## System dependencies are found with CMake's conventions
@@ -119,6 +119,7 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library

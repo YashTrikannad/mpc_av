@@ -36,7 +36,7 @@ mpc::MPCSolver::MPCSolver(const std::array<double, 4>& Q,
     params.x_0[0] = 0;
     params.x_0[1] = 0;
     params.u_max[0] = 0.4189;
-    params.u_max[1] = 5.0;
+    params.u_max[1] = 1.0;
     ROS_DEBUG("Model Loaded");
 }
 
@@ -50,11 +50,6 @@ double mpc::MPCSolver::solve_mpc(const std::array<double, 3>& required_goalpoint
         ROS_ERROR("MPC Solution did not converge");
     }
     ROS_DEBUG("Model Solved");
-
-//    std::cout << "Final Position: " << vars.x_11[0] << " " << vars.x_11[1] << std::endl;
-//    std::cout << "Input at T = 1: " << *vars.u_1 << std::endl;
-//    std::cout << "*vars.u_1[1]" << vars.u_1[1] << std::endl;
-
     return *vars.u_0;
 }
 

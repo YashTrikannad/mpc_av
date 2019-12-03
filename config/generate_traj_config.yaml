@@ -1,7 +1,7 @@
 # This YAML file contains config parameters for generating the trajectories.csv file
 
 # Input Matrix (V*dt)
-B: 0.7
+B: 1.0
 
 # Cost for Error for each intermediate State
 Q0: 1.0
