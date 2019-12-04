@@ -167,4 +167,3 @@ size_t FollowWaypoints::get_global_trackpoint(const std::vector<std::array<doubl
     return best_index;
 }
 
-

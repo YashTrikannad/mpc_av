@@ -62,6 +62,11 @@ private:
     /// @param lookahead_distance
     /// @return index of the best trackpoint
     size_t get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints, double lookahead_distance);
+
+    /// Gets a Required Heading Angle for the goal way point index in map frame
+    /// @param goal_way_point_index
+    /// @return heading angle for the waypoing (in radians in map frame)
+    double get_waypoint_heading(const std::vector<std::array<double, 2>>& waypoints, int goal_way_point_index);
 };
 
 #endif //SRC_FOLLOW_WAYPOINTS_H
