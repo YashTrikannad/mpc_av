@@ -64,9 +64,6 @@ void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &
 
     const double input = solver_.solve_mpc({goal_way_point.position.y, goal_way_point.position.x});
 
-    // Calculate curvature/steering angle
-    const double steering_angle = 2*(goal_way_point.position.y)/(lookahead_distance_*lookahead_distance_);
-
     publish_corrected_speed_and_steering(input);
 }
 
