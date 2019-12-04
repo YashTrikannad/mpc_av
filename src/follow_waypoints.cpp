@@ -1,6 +1,4 @@
-//
-// Created by yash on 11/15/19.
-//
+#include <nav_msgs/Odometry.h>
 
 #include "mpc_av/follow_waypoints.h"
 #include "mpc_av/mpc_solver.h"
@@ -34,7 +32,7 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
 
 /// Subscribes to the current pose, follows the next waypoint and updates the steering angle accordingly
 /// @param pose_msg - Localized Pose of the Robot
-void FollowWaypoints::pose_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
+void FollowWaypoints::pose_callback(const nav_msgs::OdometryConstPtr odom_msg)
 {
     if(visualization_enabled_ && !visualized_)
     {

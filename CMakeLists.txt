@@ -10,6 +10,7 @@ project(mpc_av)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
+  nav_msgs
   tf2_ros
 )
 
