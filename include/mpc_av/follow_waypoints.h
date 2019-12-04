@@ -13,6 +13,7 @@
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
+#include <nav_msgs/Odometry.h>
 
 #include "mpc_av/csv_reader.h"
 #include "mpc_av/mpc_solver.h"

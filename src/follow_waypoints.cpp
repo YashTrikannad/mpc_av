@@ -1,5 +1,3 @@
-#include <nav_msgs/Odometry.h>
-
 #include "mpc_av/follow_waypoints.h"
 #include "mpc_av/mpc_solver.h"
 

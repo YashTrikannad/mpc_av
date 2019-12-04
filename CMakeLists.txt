@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   nav_msgs
+  tf
   tf2_ros
 )
 
@@ -148,6 +149,8 @@ target_link_libraries(${PROJECT_NAME}_node
         ${PROJECT_SOURCE_DIR}/include/cvxgen/util.o
         ${PROJECT_SOURCE_DIR}/include/cvxgen/matrix_support.o)
 
+add_executable(tf_brodcaster_base_to_map src/brodcaster.cpp)
+
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -159,9 +162,13 @@ target_link_libraries(${PROJECT_NAME}_node
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(${PROJECT_NAME}_node
-   ${catkin_LIBRARIES}
- )
+target_link_libraries(${PROJECT_NAME}_node
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(tf_brodcaster_base_to_map
+${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##
