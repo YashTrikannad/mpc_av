@@ -19,10 +19,10 @@ medium_speed: 2
 low_speed: 1
 
 # Tracking Parameter
-lookahead_distance: 1.5
+lookahead_distance: 1.3
 
 # Local Map Distance
 local_map_distance: 3.0
 
 # Inflation Radius
-inflation_radius: 6
+inflation_radius: 4

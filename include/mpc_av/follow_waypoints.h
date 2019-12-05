@@ -92,7 +92,7 @@ private:
     /// @param waypoints
     /// @param lookahead_distance
     /// @return index of the best trackpoint
-    size_t get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints, double lookahead_distance, int i);
+    std::pair<size_t, double> get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints, double lookahead_distance, int i);
 
     /// Returns the row major indeices for the map of an inflated area around a point based on inflation radius
     /// @param x_map - x coordinates in map frame

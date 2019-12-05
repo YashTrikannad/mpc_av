@@ -187,9 +187,12 @@ void FollowWaypoints::drive_thread()
 
         // Find the best waypoint to track (at lookahead distance) for all racelines
         std::array<int, 3> goal_points_index{};
+        std::array<double, 3> current_lookahead{};
         for (int i = 0; i < 3; i++)
         {
-            goal_points_index[i] = get_global_trackpoint(transformed_way_points[i], lookahead_distance_, i);
+            const auto goalpoint_index_and_lookahead = get_global_trackpoint(transformed_way_points[i], lookahead_distance_, i);
+            goal_points_index[i] = goalpoint_index_and_lookahead.first;
+            current_lookahead[i] = goalpoint_index_and_lookahead.second;
         }
 
         geometry_msgs::TransformStamped map_to_base_link;
@@ -210,7 +213,6 @@ void FollowWaypoints::drive_thread()
             goal_points_map_frame[i] = goal_way_point;
             tf2::doTransform(goal_way_point, goal_points_car_frame[i], map_to_base_link);
         }
-
 
         // Select One WayPoint
         const auto raceline_index = choose_raceline(goal_points_map_frame, goal_points_car_frame);
@@ -239,7 +241,7 @@ void FollowWaypoints::drive_thread()
         // const double input = solver_.solve_mpc({goal_way_point.position.y, goal_way_point.position.x});
 
         // Calculate curvature/steering angle
-        const double input = 2 * (goal_points_car_frame[raceline_index].position.y) / (lookahead_distance_ * lookahead_distance_);
+        const double input = 2 * (goal_points_car_frame[raceline_index].position.y) / pow(current_lookahead[raceline_index],2);
 
         publish_corrected_speed_and_steering(input);
     }
@@ -324,8 +326,8 @@ std::array<std::vector<std::array<double, 2>>, 3> FollowWaypoints::transform_way
 /// @param waypoints
 /// @param lookahead_distance
 /// @param i - current raceline index being searched for
-/// @return index of the best trackpoint
-size_t FollowWaypoints::get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints,
+/// @return index of the best trackpoint and the lookahead distance
+std::pair<size_t, double> FollowWaypoints::get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints,
         double lookahead_distance, int i)
 {
     double closest_distance = std::numeric_limits<double>::max();
@@ -346,7 +348,7 @@ size_t FollowWaypoints::get_global_trackpoint(const std::vector<std::array<doubl
         }
     }
 
-    return best_index;
+    return {best_index, lookahead_distance};
 }
 
 /// Returns the row major indeices for the map of an inflated area around a point based on inflation radius
