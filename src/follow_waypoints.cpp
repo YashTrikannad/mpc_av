@@ -22,6 +22,9 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     node_handle_.getParam("/visualization_enabled", visualization_enabled_);
     node_handle_.getParam("inflation_radius", inflation_radius_);
     node_handle_.getParam("local_map_distance", local_map_distance_);
+    node_handle_.getParam("parallel_offset", parallel_offset_);
+    node_handle_.getParam("raceline_type", raceline_type_);
+    node_handle_.getParam("n_collision_checks", n_collision_checks_);
 
     // Load Input Map from map_server
     input_map_  = *(ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("map",ros::Duration(2)));
@@ -31,7 +34,14 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     }
     ROS_INFO("Map Load Successful.");
 
-    last_raceline_followed_ = 0;
+    if(raceline_type_ == 3)
+    {
+        last_raceline_followed_ = 0;
+    }
+    else
+    {
+        last_raceline_followed_ = raceline_type_;
+    }
 
     map_cols_ = input_map_.info.width;
     new_obstacles_ = {};
@@ -135,7 +145,7 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
     }
 
     clear_obstacles_count_++;
-    if(clear_obstacles_count_ > 10)
+    if(clear_obstacles_count_ > 20)
     {
         for(const auto index: new_obstacles_)
         {
@@ -150,23 +160,6 @@ void FollowWaypoints::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan
     ROS_INFO("Map Updated");
 }
 
-///// The pose callback when subscribed to particle filter's inferred pose (RRT* Main Loop)
-///// @param pose_msg - pointer to the incoming pose message
-//void FollowWaypoints::pose_callback(const nav_msgs::OdometryConstPtr &pose_msg)
-//{
-//    pose_mutex.lock();
-//    current_pose_.position.x = pose_msg->pose.pose.position.x;
-//    current_pose_.position.y = pose_msg->pose.pose.position.y;
-//    current_pose_.position.z = pose_msg->pose.pose.position.z;
-//    pose_mutex.unlock();
-////    if(visualization_enabled_)
-////    {
-////        add_way_point_visualization({current_pose_.position.x, current_pose_.position.x},
-////                                    &current_pose_viz_pub_, "map", "current_pose", 1, 0.0, 1.0, 0.0,
-////                                    1, 0.3, 0.2, 0.2);
-////    }
-//}
-
 /// Subscribes to the current pose, follows the next waypoint and updates the steering angle accordingly
 /// @param pose_msg - Localized Pose of the Robot
 void FollowWaypoints::drive_thread()
@@ -174,7 +167,7 @@ void FollowWaypoints::drive_thread()
     ros::Duration(2.0).sleep();
     while(ros::ok())
     {
-        if (visualization_enabled_ && !visualized_)
+        if (!visualized_ && visualization_enabled_)
         {
             for (int i = 0; i < 3; i++)
             {
@@ -214,8 +207,28 @@ void FollowWaypoints::drive_thread()
             tf2::doTransform(goal_way_point, goal_points_car_frame[i], map_to_base_link);
         }
 
+        geometry_msgs::Pose current_pose_car_frame;
+        current_pose_car_frame.position.x = 0;
+        current_pose_car_frame.position.y = 0;
+        current_pose_car_frame.position.z = 0;
+        current_pose_car_frame.orientation.x = 0;
+        current_pose_car_frame.orientation.y = 0;
+        current_pose_car_frame.orientation.z = 0;
+        current_pose_car_frame.orientation.w = 1;
+        const auto laser_to_map = tf_buffer_.lookupTransform("map", "laser", ros::Time(0));
+        geometry_msgs::Pose current_pose_map_frame;
+        tf2::doTransform(current_pose_car_frame, current_pose_map_frame, laser_to_map);
+
         // Select One WayPoint
-        const auto raceline_index = choose_raceline(goal_points_map_frame, goal_points_car_frame);
+        int raceline_index;
+        if(raceline_type_ == 3)
+        {
+            raceline_index = choose_raceline(goal_points_map_frame, goal_points_car_frame, current_pose_map_frame);
+        }
+        else
+        {
+            raceline_index = raceline_type_;
+        }
 
         ROS_DEBUG("Following Index %i", raceline_index);
 
@@ -332,12 +345,12 @@ std::pair<size_t, double> FollowWaypoints::get_global_trackpoint(const std::vect
 {
     double closest_distance = std::numeric_limits<double>::max();
     int best_index = -1;
-    lookahead_distance =  sqrt(pow(lookahead_distance,2)+pow(std::abs(i - last_raceline_followed_)*1, 2));
+    lookahead_distance =  sqrt(pow(lookahead_distance,2)+pow(std::abs(i - last_raceline_followed_)*parallel_offset_, 2));
 
 
     for(size_t i=0; i <waypoints.size(); ++i)
     {
-        if(waypoints[i][0] < lookahead_distance/2) continue;
+        if(waypoints[i][0] < lookahead_distance/5) continue;
         double distance = sqrt(waypoints[i][0]*waypoints[i][0] +
                                        waypoints[i][1]*waypoints[i][1]);
         double lookahead_diff = std::abs(distance - lookahead_distance);
@@ -385,26 +398,22 @@ int FollowWaypoints::get_row_major_index(const double x_map, const double y_map)
 /// @param racelines_map_frame
 /// @return
 int FollowWaypoints::choose_raceline(const std::array<geometry_msgs::Pose, 3>& goalpoints_map_frame,
-                                     const std::array<geometry_msgs::Pose, 3>& goalpoints_car_frame)
+                                     const std::array<geometry_msgs::Pose, 3>& goalpoints_car_frame,
+                                     const geometry_msgs::Pose& current_pose_map_frame)
 {
     auto is_collided = [&](const geometry_msgs::Pose& waypoint){
-//        for(int i=1; i<10; i++)
-//        {
-//            pose_mutex.lock();
-//            const double x = (1-0.1)*i*(current_pose_.position.x) + 0.1*i*(waypoint.position.x);
-//            const double y = (1-0.1)*i*(current_pose_.position.y) + 0.1*i*(waypoint.position.y);
-//            pose_mutex.unlock();
-//            const auto index = get_row_major_index(x, y);
-//            if(input_map_.data[index] == 100)
-//            {
-//                return true;
-//            }
-//
-//        }
-        const auto index = get_row_major_index(waypoint.position.x, waypoint.position.y);
-        if(input_map_.data[index] == 100)
+        for(int i=1; i<n_collision_checks_; i++)
         {
-            return true;
+            pose_mutex.lock();
+            const double x = current_pose_map_frame.position.x + (i*(waypoint.position.x-current_pose_map_frame.position.x)/n_collision_checks_);
+            const double y = current_pose_map_frame.position.y + (i*(waypoint.position.y-current_pose_map_frame.position.y)/n_collision_checks_);
+            pose_mutex.unlock();
+            const auto index = get_row_major_index(x, y);
+            if(input_map_.data[index] == 100)
+            {
+                return true;
+            }
+
         }
         return false;
     };
@@ -422,7 +431,7 @@ int FollowWaypoints::choose_raceline(const std::array<geometry_msgs::Pose, 3>& g
 
         double input1 = calculate_input(1);
         double input2 = calculate_input(2);
-        if(input1 < input2 && !is_collided(goalpoints_map_frame[1]))
+        if(!is_collided(goalpoints_map_frame[1]))
         {
             last_raceline_followed_ = 1;
             return 1;
@@ -447,7 +456,7 @@ int FollowWaypoints::choose_raceline(const std::array<geometry_msgs::Pose, 3>& g
         double input0 = calculate_input(0);
         double input2 = calculate_input(2);
 
-        if(input0 < input2 && !is_collided(goalpoints_map_frame[0]))
+        if(!is_collided(goalpoints_map_frame[0]))
         {
             last_raceline_followed_ = 0;
             return 0;
@@ -468,7 +477,7 @@ int FollowWaypoints::choose_raceline(const std::array<geometry_msgs::Pose, 3>& g
         }
         double input1 = calculate_input(1);
         double input0 = calculate_input(0);
-        if(input1 < input0 && !is_collided(goalpoints_map_frame[1]))
+        if(!is_collided(goalpoints_map_frame[1]))
         {
             last_raceline_followed_ = 1;
             return 1;

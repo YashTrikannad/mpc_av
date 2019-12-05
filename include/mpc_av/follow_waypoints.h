@@ -41,6 +41,9 @@ private:
     double high_speed_;
     double medium_speed_;
     double low_speed_;
+    double parallel_offset_;
+    int raceline_type_;
+    int n_collision_checks_;
 
     /// Map
     nav_msgs::OccupancyGrid input_map_;
@@ -110,7 +113,8 @@ private:
     /// @param racelines_map_frame
     /// @return
     int choose_raceline(const std::array<geometry_msgs::Pose, 3>& racelines_map_frame,
-                        const std::array<geometry_msgs::Pose, 3>& racelines_car_frame);
+                        const std::array<geometry_msgs::Pose, 3>& racelines_car_frame,
+                        const geometry_msgs::Pose& current_pose_map_frame);
 };
 
 #endif //SRC_FOLLOW_WAYPOINTS_H

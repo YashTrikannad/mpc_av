@@ -19,10 +19,23 @@ medium_speed: 2
 low_speed: 1
 
 # Tracking Parameter
-lookahead_distance: 1.3
+lookahead_distance: 2.2
+
+# Parallel Offset for lookahead
+parallel_offset: 1.2
 
 # Local Map Distance
 local_map_distance: 3.0
 
 # Inflation Radius
 inflation_radius: 4
+
+# No of Collision Checks
+n_collision_checks: 20
+
+# Raceline Type
+# 0 - Inner Line
+# 1 - Center Line
+# 2 - Outer Line
+# 3 - Get the Best WayPoints from the 3 Racelines Online (Allows Obstacle Avoidance)
+raceline_type: 2
