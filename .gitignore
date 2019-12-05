@@ -1,2 +1,4 @@
 /sensor_data
 /include/cvxgen
+/.idea
+/cmake-build-debug
