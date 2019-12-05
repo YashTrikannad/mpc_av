@@ -4,6 +4,7 @@
 
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 
 #include "mpc_av/visualisation.h"
 
@@ -49,17 +50,33 @@ void add_way_point_visualization(const std::array<double, 2>& way_point,
 void visualize_waypoint_data(const std::vector<std::array<double, 2>>& waypoints,
                              ros::Publisher* way_point_viz_pub,
                              const std::string& frame_id,
+                             int i,
                              double r,
                              double g,
                              double b,
                              double transparency,
-                             double scale_x,
-                             double scale_y,
-                             double scale_z)
+                             double scale_x)
 {
-    const size_t increment = 1;
-    for(size_t i=0; i<waypoints.size(); i=i+increment)
+    visualization_msgs::Marker line_strip;
+    line_strip.header.frame_id = "/map";
+    line_strip.header.stamp = ros::Time::now();
+    line_strip.ns = "global_waypoints";
+    line_strip.action = visualization_msgs::Marker::ADD;
+    line_strip.pose.orientation.w = 1.0;
+    line_strip.id = i;
+    line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+    line_strip.scale.x = 0.1;
+    line_strip.color.a = transparency;
+    line_strip.color.r = r;
+    line_strip.color.g = g;
+    line_strip.color.b = b;
+    for(auto waypoint : waypoints)
     {
-        add_way_point_visualization(waypoints[i],  way_point_viz_pub, frame_id, "global_waypoints", i, 0.0, 0.0, 1.0, 0.5);
+        geometry_msgs::Point p;
+        p.x = waypoint[0];
+        p.y = waypoint[1];
+        p.z = 0;
+        line_strip.points.emplace_back(p);
     }
+    way_point_viz_pub->publish(line_strip);
 }

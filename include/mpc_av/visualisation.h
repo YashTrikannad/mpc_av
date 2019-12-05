@@ -46,12 +46,11 @@ void add_way_point_visualization(const std::array<double, 2>& way_point,
 void visualize_waypoint_data(const std::vector<std::array<double, 2>>& waypoints,
                              ros::Publisher* way_point_viz_pub,
                              const std::string& frame_id,
+                             int i,
                              double r = 0.5,
                              double g = 0,
                              double b = 0,
                              double transparency = 0.5,
-                             double scale_x=0.1,
-                             double scale_y=0.1,
-                             double scale_z=0.1);
+                             double scale_x=0.1);
 
 #endif //SRC_VISUALISATION_H

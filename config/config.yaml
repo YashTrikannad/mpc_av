@@ -5,16 +5,24 @@ pose_topic: "pf/pose/odom"
 drive_topic: "nav"
 
 # Visualization
-visualization_enabled: false
+visualization_enabled: true
 
 # Input CSV File Path
-csv_path: "/home/yash/yasht_ws/src/mpc_av/sensor_data/gtpose_fast.csv"
+csv_path_inner: "/home/yash/yasht_ws/src/mpc_av/Csv Files/MPC_innerline.csv"
+csv_path_center: "/home/yash/yasht_ws/src/mpc_av/Csv Files/MPC_centerline_1.csv"
+csv_path_outer: "/home/yash/yasht_ws/src/mpc_av/Csv Files/MPC_outerline.csv"
 
 # Car Parameters:
 # Speed Variations
-high_speed: 1
-medium_speed: 1
+high_speed: 5
+medium_speed: 2
 low_speed: 1
 
 # Tracking Parameter
-lookahead_distance : 1.5
+lookahead_distance: 1.5
+
+# Local Map Distance
+local_map_distance: 3.0
+
+# Inflation Radius
+inflation_radius: 6
