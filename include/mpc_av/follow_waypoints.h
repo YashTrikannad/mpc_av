@@ -1,7 +1,3 @@
-//
-// Created by yash on 11/15/19.
-//
-
 #ifndef SRC_FOLLOW_WAYPOINTS_H
 #define SRC_FOLLOW_WAYPOINTS_H
 
@@ -51,6 +47,14 @@ private:
     std::vector<size_t > new_obstacles_;
     int clear_obstacles_count_;
     int inflation_radius_;
+
+    /// PID parameters
+    double kp_;
+    double ki_;
+    double kd_;
+
+    double prev_error_;
+    double integral_;
 
     /// Waypoint Data
     /// Index 0 - Inner Line

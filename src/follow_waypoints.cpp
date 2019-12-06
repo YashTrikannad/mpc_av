@@ -26,6 +26,12 @@ FollowWaypoints::FollowWaypoints() : node_handle_(ros::NodeHandle()), tf_listene
     node_handle_.getParam("raceline_type", raceline_type_);
     node_handle_.getParam("n_collision_checks", n_collision_checks_);
 
+    node_handle_.getParam("/kp", kp_);
+    node_handle_.getParam("/ki", ki_);
+    node_handle_.getParam("/kd", kd_);
+    integral_ = 0;
+    prev_error_ = 0;
+
     // Load Input Map from map_server
     input_map_  = *(ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("map",ros::Duration(2)));
     if(input_map_.data.empty())
@@ -256,7 +262,23 @@ void FollowWaypoints::drive_thread()
         // Calculate curvature/steering angle
         const double input = 2 * (goal_points_car_frame[raceline_index].position.y) / pow(current_lookahead[raceline_index],2);
 
-        publish_corrected_speed_and_steering(input);
+        // PID Control
+        const auto diff = input - prev_error_;
+
+        integral_ = integral_ + input;
+
+        const auto sign = input*prev_error_;
+
+        if(sign <=0)
+        {
+            integral_ = 0;
+        }
+
+        prev_error_ = input;
+
+        double steering_angle = kp_*input + kd_*diff + ki_*integral_;
+
+        publish_corrected_speed_and_steering(steering_angle);
     }
 }
 
@@ -341,7 +363,7 @@ std::array<std::vector<std::array<double, 2>>, 3> FollowWaypoints::transform_way
 /// @param i - current raceline index being searched for
 /// @return index of the best trackpoint and the lookahead distance
 std::pair<size_t, double> FollowWaypoints::get_global_trackpoint(const std::vector<std::array<double, 2>>& waypoints,
-        double lookahead_distance, int i)
+                                                                 double lookahead_distance, int i)
 {
     double closest_distance = std::numeric_limits<double>::max();
     int best_index = -1;
@@ -352,7 +374,7 @@ std::pair<size_t, double> FollowWaypoints::get_global_trackpoint(const std::vect
     {
         if(waypoints[i][0] < lookahead_distance/5) continue;
         double distance = sqrt(waypoints[i][0]*waypoints[i][0] +
-                                       waypoints[i][1]*waypoints[i][1]);
+                               waypoints[i][1]*waypoints[i][1]);
         double lookahead_diff = std::abs(distance - lookahead_distance);
         if(lookahead_diff < closest_distance)
         {
@@ -495,4 +517,6 @@ int FollowWaypoints::choose_raceline(const std::array<geometry_msgs::Pose, 3>& g
         ROS_ERROR("No Last Raceline Followed/ Invalid Raceline %i", last_raceline_followed_);
     }
 }
+
+
 

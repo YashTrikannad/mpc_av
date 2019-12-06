@@ -2,6 +2,7 @@
 
 # ROS Topic Names
 pose_topic: "pf/pose/odom"
+#drive_topic: "/vesc/high_level/ackermann_cmd_mux/input/nav_1"
 drive_topic: "nav"
 
 # Visualization
@@ -38,4 +39,11 @@ n_collision_checks: 20
 # 1 - Center Line
 # 2 - Outer Line
 # 3 - Get the Best WayPoints from the 3 Racelines Online (Allows Obstacle Avoidance)
-raceline_type: 2
+raceline_type: 3
+
+# PID Parameters
+kp: 1.0
+ki: 0.0
+kd: 0.0
+
+
