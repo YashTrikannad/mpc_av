@@ -1,6 +1,6 @@
 # mpc_av
 
-This repository runs modern predictive controller for trajectory generation and tracking of Autonomus Vehicles. Note: This repository uses cvxgen to solve mpc optimization equations which requires a license (/acadmeic license)
+This repository runs model predictive controller for trajectory generation and tracking of Autonomus Vehicles. Note: This repository uses cvxgen to solve mpc optimization equations which requires a license (/acadmeic license)
 
 ![mpc example gif](mpc_av.gif)
 
